@@ -39,8 +39,6 @@ const WORKOUTS = {
   },
 };
 const THEME_KEY = 'strengthlog_theme';
-const SESSION_SYNC_KEY = 'strengthlog_sessions_sync';
-const SESSION_SYNC_CHANNEL = 'strengthlog_sessions_channel';
 
 let exerciseCatalog = EXERCISE_CATALOG;
 let workouts = WORKOUTS;
@@ -48,9 +46,6 @@ let appState = { sessions: [] };
 let currentUser = null;
 let supabaseClient = null;
 let authSubscription = null;
-let sessionSyncChannel = null;
-let refreshInFlight = null;
-let lastSyncAt = 0;
 
 const els = {
   authGate: document.getElementById('authGate'),
@@ -95,12 +90,10 @@ init();
 async function init() {
   applyTheme();
   bindBaseEvents();
-  setupSessionSync();
   populateWorkoutSelect();
   populateExerciseSelects();
   renderPlan();
   setToday();
-  ensureLogFormReady();
 
   const config = window.STRENGTHLOG_CONFIG || {};
   const missingConfig = !config.supabaseUrl || !config.supabaseAnonKey ||
@@ -160,14 +153,6 @@ async function init() {
 }
 
 function bindBaseEvents() {
-  window.addEventListener('focus', () => { void refreshFromServer({ force: false }); });
-  window.addEventListener('pageshow', () => { void refreshFromServer({ force: false }); });
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') {
-      void refreshFromServer({ force: false });
-    }
-  });
-
   els.authTabs.forEach(tab => tab.addEventListener('click', () => switchAuthTab(tab.dataset.authTab)));
   els.loginForm.addEventListener('submit', handleLogin);
   els.registerForm.addEventListener('submit', handleRegister);
@@ -210,7 +195,7 @@ async function enterApp() {
   els.authGate.classList.add('hidden');
   els.appShell.classList.remove('hidden');
   await loadSessions();
-  ensureLogFormReady();
+  renderWorkoutForm();
   renderHistory();
   renderDashboard();
 }
@@ -278,63 +263,6 @@ async function handleRegister(event) {
   }
 }
 
-function setupSessionSync() {
-  if ('BroadcastChannel' in window) {
-    sessionSyncChannel = new BroadcastChannel(SESSION_SYNC_CHANNEL);
-    sessionSyncChannel.addEventListener('message', event => {
-      if (event?.data?.type === 'sessions-updated') {
-        void refreshFromServer({ force: true });
-      }
-    });
-  }
-
-  window.addEventListener('storage', event => {
-    if (event.key === SESSION_SYNC_KEY && event.newValue) {
-      void refreshFromServer({ force: true });
-    }
-  });
-}
-
-function notifySessionChange() {
-  const stamp = String(Date.now());
-  try {
-    localStorage.setItem(SESSION_SYNC_KEY, stamp);
-  } catch (_) {
-    // ignore storage write errors
-  }
-  try {
-    sessionSyncChannel?.postMessage({ type: 'sessions-updated', at: stamp });
-  } catch (_) {
-    // ignore broadcast errors
-  }
-}
-
-async function refreshFromServer({ force = false } = {}) {
-  if (!supabaseClient || !currentUser || els.appShell.classList.contains('hidden')) return;
-  const now = Date.now();
-  if (!force && now - lastSyncAt < 1500) return;
-  if (refreshInFlight) {
-    if (!force) return refreshInFlight;
-    return refreshInFlight;
-  }
-
-  refreshInFlight = (async () => {
-    try {
-      await loadSessions();
-      lastSyncAt = Date.now();
-      renderHistory();
-      renderDashboard();
-      lastSyncAt = Date.now();
-    } catch (_) {
-      // ignore background refresh errors
-    } finally {
-      refreshInFlight = null;
-    }
-  })();
-
-  return refreshInFlight;
-}
-
 async function handleLogout() {
   if (!supabaseClient) return;
   try {
@@ -348,7 +276,6 @@ async function handleLogout() {
   showAuth();
   switchAuthTab('login');
   showToast('Du er logget ut.');
-  notifySessionChange();
 }
 
 async function loadSessions() {
@@ -396,37 +323,12 @@ function generateId() {
 function activateTab(tabName) {
   els.tabs.forEach(tab => tab.classList.toggle('active', tab.dataset.tab === tabName));
   els.panels.forEach(panel => panel.classList.toggle('active', panel.id === tabName));
-  if (tabName === 'log') {
-    ensureLogFormReady();
-  }
 }
 
 function populateWorkoutSelect() {
-  const previousValue = els.workoutSelect.value;
   els.workoutSelect.innerHTML = Object.entries(workouts)
     .map(([key, workout]) => `<option value="${key}">${workout.name}</option>`)
     .join('');
-
-  if (previousValue && workouts[previousValue]) {
-    els.workoutSelect.value = previousValue;
-  } else {
-    const firstKey = Object.keys(workouts)[0];
-    if (firstKey) els.workoutSelect.value = firstKey;
-  }
-}
-
-function ensureLogFormReady() {
-  const selectedWorkout = els.workoutSelect.value;
-  const firstWorkout = Object.keys(workouts)[0] || '';
-  if (!selectedWorkout || !workouts[selectedWorkout]) {
-    els.workoutSelect.value = firstWorkout;
-  }
-
-  const renderedWorkout = els.exerciseFormArea.dataset.renderedWorkout || '';
-  const hasCards = els.exerciseFormArea.querySelector('.exercise-card');
-  if (!hasCards || renderedWorkout !== els.workoutSelect.value) {
-    renderWorkoutForm();
-  }
 }
 
 function populateExerciseSelects() {
@@ -446,16 +348,10 @@ function setToday() {
   els.sessionDate.value = new Date().toISOString().slice(0, 10);
 }
 function renderWorkoutForm() {
-  const selectedWorkout = els.workoutSelect.value;
-  const workout = workouts[selectedWorkout];
-  if (!workout) {
-    els.exerciseFormArea.innerHTML = '';
-    delete els.exerciseFormArea.dataset.renderedWorkout;
-    return;
-  }
+  const workout = workouts[els.workoutSelect.value];
+  if (!workout) return;
   const exerciseTemplate = document.getElementById('exerciseTemplate');
   els.exerciseFormArea.innerHTML = '';
-  els.exerciseFormArea.dataset.renderedWorkout = selectedWorkout;
 
   workout.pairs.forEach(pair => {
     pair.exercises.forEach(exerciseKey => {
@@ -510,16 +406,6 @@ function createSetRow(exerciseKey, number) {
 async function saveSession(event) {
   event.preventDefault();
   const workoutKey = els.workoutSelect.value;
-  if (!workoutKey || !workouts[workoutKey]) {
-    showToast('Velg en økt før du lagrer.');
-    return;
-  }
-  if (!els.sessionDate.value) {
-    showToast('Velg dato før du lagrer.');
-    return;
-  }
-  const submitBtn = els.logForm.querySelector('button[type="submit"]');
-  if (submitBtn) submitBtn.disabled = true;
   const exerciseLogs = [];
 
   [...els.exerciseFormArea.querySelectorAll('.exercise-card')].forEach(card => {
@@ -568,19 +454,14 @@ async function saveSession(event) {
 
     appState.sessions.push(mapDbSession(data));
     appState.sessions.sort((a, b) => a.date.localeCompare(b.date));
-    lastSyncAt = Date.now();
     renderHistory();
     renderDashboard();
     els.sessionNotes.value = '';
     renderWorkoutForm();
     showToast('Økten ble lagret.');
-    notifySessionChange();
     activateTab('history');
   } catch (error) {
-    console.error('saveSession failed', error);
     showToast(error.message || 'Kunne ikke lagre økten.');
-  } finally {
-    if (submitBtn) submitBtn.disabled = false;
   }
 }
 
@@ -629,11 +510,9 @@ function renderHistory() {
         if (error) throw error;
 
         appState.sessions = appState.sessions.filter(s => s.id !== session.id);
-        lastSyncAt = Date.now();
         renderHistory();
         renderDashboard();
         showToast('Økten ble slettet.');
-        notifySessionChange();
       } catch (error) {
         showToast(error.message || 'Kunne ikke slette økten.');
       }
@@ -887,11 +766,9 @@ function importData(event) {
         .upsert(rows, { onConflict: 'id' });
       if (error) throw error;
       await loadSessions();
-      lastSyncAt = Date.now();
       renderHistory();
       renderDashboard();
       showToast('Data ble importert til Supabase.');
-      notifySessionChange();
     } catch (error) {
       showToast(error.message || 'Kunne ikke importere filen.');
     } finally {
