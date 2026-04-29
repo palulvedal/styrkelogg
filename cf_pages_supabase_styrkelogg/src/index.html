@@ -22,11 +22,11 @@
       <form id="loginForm" class="auth-form">
         <label>
           <span>E-post</span>
-          <input id="loginEmail" type="email" autocomplete="username" required />
+          <input id="loginEmail" name="loginEmail" type="email" autocomplete="username" required />
         </label>
         <label>
           <span>Passord</span>
-          <input id="loginPassword" type="password" autocomplete="current-password" required />
+          <input id="loginPassword" name="loginPassword" type="password" autocomplete="current-password" required />
         </label>
         <button class="primary-btn full-width" type="submit">Logg inn</button>
       </form>
@@ -34,15 +34,15 @@
       <form id="registerForm" class="auth-form hidden">
         <label>
           <span>Navn</span>
-          <input id="registerName" type="text" autocomplete="name" required />
+          <input id="registerName" name="registerName" type="text" autocomplete="name" required />
         </label>
         <label>
           <span>E-post</span>
-          <input id="registerEmail" type="email" autocomplete="username" required />
+          <input id="registerEmail" name="registerEmail" type="email" autocomplete="username" required />
         </label>
         <label>
           <span>Passord</span>
-          <input id="registerPassword" type="password" autocomplete="new-password" minlength="8" required />
+          <input id="registerPassword" name="registerPassword" type="password" autocomplete="new-password" minlength="8" required />
         </label>
         <button class="primary-btn full-width" type="submit">Opprett bruker</button>
       </form>
@@ -136,20 +136,20 @@
             <div class="inline-controls">
               <label>
                 <span>Dato</span>
-                <input id="sessionDate" type="date" />
+                <input id="sessionDate" name="sessionDate" type="date" />
               </label>
               <label>
                 <span>Økt</span>
-                <select id="workoutSelect"></select>
+                <select id="workoutSelect" name="workoutSelect"></select>
               </label>
             </div>
           </div>
           <p class="muted">Programmet er forhåndsutfylt med supersett-versjonen med litt ekstra mage og rygg.</p>
-          <form id="logForm">
+          <form id="logForm" novalidate>
             <div id="exerciseFormArea"></div>
             <label class="notes-wrap">
               <span>Notater</span>
-              <textarea id="sessionNotes" rows="3" placeholder="Form, søvn, smerter, eller noe som gikk ekstra bra..."></textarea>
+              <textarea id="sessionNotes" name="sessionNotes" rows="3" placeholder="Form, søvn, smerter, eller noe som gikk ekstra bra..."></textarea>
             </label>
             <div class="action-row">
               <button class="primary-btn" type="submit">Lagre økt</button>
@@ -204,9 +204,9 @@
   <template id="setRowTemplate">
     <div class="set-row">
       <span class="set-label"></span>
-      <input class="set-weight" type="number" min="0" step="0.5" placeholder="kg" inputmode="decimal" />
-      <input class="set-reps" type="number" min="0" step="1" placeholder="reps" inputmode="numeric" />
-      <input class="set-seconds hidden" type="number" min="0" step="1" placeholder="sek" inputmode="numeric" />
+      <input class="set-weight" name="setWeight" type="number" min="0" step="0.5" placeholder="kg" inputmode="decimal" />
+      <input class="set-reps" name="setReps" type="number" min="0" step="1" placeholder="reps" inputmode="numeric" />
+      <input class="set-seconds hidden" name="setSeconds" type="number" min="0" step="1" placeholder="sek" inputmode="numeric" />
       <button class="icon-btn remove-set-btn" type="button" aria-label="Fjern sett">×</button>
     </div>
   </template>

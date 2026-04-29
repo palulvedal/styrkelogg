@@ -510,6 +510,16 @@ function createSetRow(exerciseKey, number) {
 async function saveSession(event) {
   event.preventDefault();
   const workoutKey = els.workoutSelect.value;
+  if (!workoutKey || !workouts[workoutKey]) {
+    showToast('Velg en økt før du lagrer.');
+    return;
+  }
+  if (!els.sessionDate.value) {
+    showToast('Velg dato før du lagrer.');
+    return;
+  }
+  const submitBtn = els.logForm.querySelector('button[type="submit"]');
+  if (submitBtn) submitBtn.disabled = true;
   const exerciseLogs = [];
 
   [...els.exerciseFormArea.querySelectorAll('.exercise-card')].forEach(card => {
@@ -567,7 +577,10 @@ async function saveSession(event) {
     notifySessionChange();
     activateTab('history');
   } catch (error) {
+    console.error('saveSession failed', error);
     showToast(error.message || 'Kunne ikke lagre økten.');
+  } finally {
+    if (submitBtn) submitBtn.disabled = false;
   }
 }
 
