@@ -441,14 +441,24 @@ async function saveSession(event) {
   };
 
   try {
-    const result = await apiPost('/api/sessions', session);
-    appState.sessions.push(result.session);
+    if (!supabaseClient || !currentUser) {
+      throw new Error('Du må være logget inn for å lagre økter.');
+    }
+    const row = toDbSession(session);
+    const { data, error } = await supabaseClient
+      .from('workout_sessions')
+      .insert([row])
+      .select('id, user_id, session_date, workout_key, notes, payload_json, created_at, updated_at')
+      .single();
+    if (error) throw error;
+
+    appState.sessions.push(mapDbSession(data));
     appState.sessions.sort((a, b) => a.date.localeCompare(b.date));
     renderHistory();
     renderDashboard();
     els.sessionNotes.value = '';
     renderWorkoutForm();
-    showToast('Økten ble lagret på serveren.');
+    showToast('Økten ble lagret.');
     activateTab('history');
   } catch (error) {
     showToast(error.message || 'Kunne ikke lagre økten.');
@@ -489,7 +499,16 @@ function renderHistory() {
     div.querySelector('.delete-session-btn').addEventListener('click', async () => {
       if (!confirm('Slette denne økten?')) return;
       try {
-        await apiDelete(`/api/sessions/${session.id}`);
+        if (!supabaseClient || !currentUser) {
+          throw new Error('Du må være logget inn for å slette økter.');
+        }
+        const { error } = await supabaseClient
+          .from('workout_sessions')
+          .delete()
+          .eq('id', session.id)
+          .eq('user_id', currentUser.id);
+        if (error) throw error;
+
         appState.sessions = appState.sessions.filter(s => s.id !== session.id);
         renderHistory();
         renderDashboard();
