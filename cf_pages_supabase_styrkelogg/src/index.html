@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#111827" />
+  <title>Styrkelogg</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="authGate" class="auth-shell">
+    <section class="auth-card">
+      <p class="eyebrow">Styrkelogg med Supabase</p>
+      <h1>Logg inn</h1>
+      <p class="muted">Øktene dine lagres i Supabase, så du kan bruke samme innlogging på flere enheter.</p>
+
+      <div class="auth-tabs" role="tablist" aria-label="Innlogging og registrering">
+        <button class="auth-tab active" data-auth-tab="login" type="button">Logg inn</button>
+        <button class="auth-tab" data-auth-tab="register" type="button">Opprett bruker</button>
+      </div>
+
+      <form id="loginForm" class="auth-form">
+        <label>
+          <span>E-post</span>
+          <input id="loginEmail" type="email" autocomplete="username" required />
+        </label>
+        <label>
+          <span>Passord</span>
+          <input id="loginPassword" type="password" autocomplete="current-password" required />
+        </label>
+        <button class="primary-btn full-width" type="submit">Logg inn</button>
+      </form>
+
+      <form id="registerForm" class="auth-form hidden">
+        <label>
+          <span>Navn</span>
+          <input id="registerName" type="text" autocomplete="name" required />
+        </label>
+        <label>
+          <span>E-post</span>
+          <input id="registerEmail" type="email" autocomplete="username" required />
+        </label>
+        <label>
+          <span>Passord</span>
+          <input id="registerPassword" type="password" autocomplete="new-password" minlength="8" required />
+        </label>
+        <button class="primary-btn full-width" type="submit">Opprett bruker</button>
+      </form>
+
+      <p id="authMessage" class="auth-message muted"></p>
+    </section>
+  </div>
+
+  <div id="appShell" class="app-shell hidden">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Mobilvennlig treningsapp</p>
+        <h1>Styrkelogg</h1>
+        <p class="muted" id="accountLabel"></p>
+      </div>
+      <div class="topbar-actions">
+        <button id="themeToggle" class="ghost-btn" type="button" aria-label="Bytt tema">☾</button>
+        <button id="logoutBtn" class="ghost-btn" type="button">Logg ut</button>
+      </div>
+    </header>
+
+    <nav class="tabs" aria-label="Navigasjon">
+      <button class="tab active" data-tab="dashboard">Oversikt</button>
+      <button class="tab" data-tab="log">Logg økt</button>
+      <button class="tab" data-tab="history">Historikk</button>
+      <button class="tab" data-tab="plan">Plan</button>
+    </nav>
+
+    <main>
+      <section id="dashboard" class="tab-panel active">
+        <div class="card intro-card">
+          <div>
+            <h2>Utvikling over tid</h2>
+            <p>Her ser du treningsfrekvens, total treningsmengde og styrketrend på nøkkeløvelser.</p>
+          </div>
+          <div class="pill-row">
+            <span class="pill"><strong id="statSessions">0</strong> økter</span>
+            <span class="pill"><strong id="statMonth">0</strong> siste 30 dager</span>
+            <span class="pill"><strong id="statVolume">0</strong> kg løftet</span>
+          </div>
+        </div>
+
+        <div class="grid-two">
+          <div class="card">
+            <div class="card-head">
+              <h3>Økter per uke</h3>
+              <span class="muted">12 uker</span>
+            </div>
+            <div id="sessionsChart" class="chart"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head stacked-mobile">
+              <h3>Styrketrend</h3>
+              <label class="select-wrap">
+                <span>Øvelse</span>
+                <select id="strengthExerciseSelect"></select>
+              </label>
+            </div>
+            <div id="strengthChart" class="chart"></div>
+            <p class="tiny muted">Viser estimert 1RM basert på beste registrerte sett per økt for vektøvelser.</p>
+          </div>
+        </div>
+
+        <div class="grid-two">
+          <div class="card">
+            <div class="card-head stacked-mobile">
+              <h3>Volum per uke</h3>
+              <label class="select-wrap">
+                <span>Øvelse</span>
+                <select id="volumeExerciseSelect"></select>
+              </label>
+            </div>
+            <div id="volumeChart" class="chart"></div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <h3>Perser og beste noteringer</h3>
+              <span class="muted">oppdatert automatisk</span>
+            </div>
+            <div id="prTable" class="pr-table"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="log" class="tab-panel">
+        <div class="card">
+          <div class="card-head stacked-mobile">
+            <h2>Logg en økt</h2>
+            <div class="inline-controls">
+              <label>
+                <span>Dato</span>
+                <input id="sessionDate" type="date" />
+              </label>
+              <label>
+                <span>Økt</span>
+                <select id="workoutSelect"></select>
+              </label>
+            </div>
+          </div>
+          <p class="muted">Programmet er forhåndsutfylt med supersett-versjonen med litt ekstra mage og rygg.</p>
+          <form id="logForm">
+            <div id="exerciseFormArea"></div>
+            <label class="notes-wrap">
+              <span>Notater</span>
+              <textarea id="sessionNotes" rows="3" placeholder="Form, søvn, smerter, eller noe som gikk ekstra bra..."></textarea>
+            </label>
+            <div class="action-row">
+              <button class="primary-btn" type="submit">Lagre økt</button>
+              <button id="clearFormBtn" class="ghost-btn" type="button">Nullstill</button>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section id="history" class="tab-panel">
+        <div class="card">
+          <div class="card-head stacked-mobile">
+            <h2>Historikk</h2>
+            <div class="inline-controls compact">
+              <button id="exportBtn" class="ghost-btn" type="button">Eksporter data</button>
+              <label class="file-btn">
+                <input id="importInput" type="file" accept="application/json" />
+                Importer data
+              </label>
+            </div>
+          </div>
+          <div id="historyList" class="history-list empty-state">
+            Ingen økter logget ennå.
+          </div>
+        </div>
+      </section>
+
+      <section id="plan" class="tab-panel">
+        <div class="card">
+          <h2>Treningsplan</h2>
+          <p class="muted">To korte økter per uke, med hovedfokus på overkropp. Supersettene er satt opp slik at øktene holder seg korte.</p>
+          <div id="planView"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <template id="exerciseTemplate">
+    <section class="exercise-card">
+      <div class="exercise-head">
+        <div>
+          <p class="superset-label"></p>
+          <h3 class="exercise-name"></h3>
+          <p class="exercise-target muted"></p>
+        </div>
+        <button class="ghost-btn add-set-btn" type="button">+ sett</button>
+      </div>
+      <div class="set-table"></div>
+    </section>
+  </template>
+
+  <template id="setRowTemplate">
+    <div class="set-row">
+      <span class="set-label"></span>
+      <input class="set-weight" type="number" min="0" step="0.5" placeholder="kg" inputmode="decimal" />
+      <input class="set-reps" type="number" min="0" step="1" placeholder="reps" inputmode="numeric" />
+      <input class="set-seconds hidden" type="number" min="0" step="1" placeholder="sek" inputmode="numeric" />
+      <button class="icon-btn remove-set-btn" type="button" aria-label="Fjern sett">×</button>
+    </div>
+  </template>
+
+  
+  <script src="./app-config.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
