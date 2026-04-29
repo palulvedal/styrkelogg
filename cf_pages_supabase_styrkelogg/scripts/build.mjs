@@ -1,5 +1,4 @@
 import { mkdir, rm, cp, writeFile } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
 import path from 'node:path';
 
 const root = process.cwd();
@@ -21,12 +20,23 @@ const config = {
 const configJs = `window.STRENGTHLOG_CONFIG = ${JSON.stringify(config, null, 2)};\n`;
 await writeFile(path.join(distDir, 'app-config.js'), configJs, 'utf8');
 
-// Optional helper files for Cloudflare Pages / direct upload
 const headers = [
+  '/',
+  '  Cache-Control: no-store',
+  '',
+  '/index.html',
+  '  Cache-Control: no-store',
+  '',
+  '/app.js',
+  '  Cache-Control: no-store',
+  '',
+  '/styles.css',
+  '  Cache-Control: no-store',
+  '',
   '/app-config.js',
   '  Cache-Control: no-store',
   '',
 ].join('\n');
 await writeFile(path.join(distDir, '_headers'), headers, 'utf8');
 
-console.log('Built dist/ with injected configuration placeholders.');
+console.log('Built dist/ with cache-safe headers.');
