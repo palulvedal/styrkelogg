@@ -46,6 +46,9 @@ let appState = { sessions: [] };
 let currentUser = null;
 let supabaseClient = null;
 let authSubscription = null;
+let initialSessionResolved = false;
+let enteringAppPromise = null;
+let appReadyForUserId = null;
 
 const els = {
   authGate: document.getElementById('authGate'),
@@ -94,6 +97,7 @@ async function init() {
   populateExerciseSelects();
   renderPlan();
   setToday();
+  renderWorkoutForm();
 
   const config = window.STRENGTHLOG_CONFIG || {};
   const missingConfig = !config.supabaseUrl || !config.supabaseAnonKey ||
@@ -120,38 +124,46 @@ async function init() {
     },
   });
 
-  const { data: authListener } = supabaseClient.auth.onAuthStateChange(async (_event, session) => {
-    if (session?.user) {
-      currentUser = mapUser(session.user);
-      if (els.appShell.classList.contains('hidden')) {
-        await enterApp();
-      } else {
-        els.accountLabel.textContent = formatAccountLabel(currentUser);
-      }
-    } else {
-      currentUser = null;
-      appState = { sessions: [] };
-      showAuth();
-      switchAuthTab('login');
-    }
-  });
-  authSubscription = authListener?.subscription || null;
-
   try {
     const { data, error } = await supabaseClient.auth.getSession();
     if (error) throw error;
+
     if (data.session?.user) {
       currentUser = mapUser(data.session.user);
-      await enterApp();
+      await enterApp({ forceReload: true });
     } else {
       showAuth();
     }
   } catch (error) {
     showAuth();
     showAuthMessage(error.message || 'Kunne ikke koble til Supabase.');
+  } finally {
+    initialSessionResolved = true;
   }
-}
 
+  const { data: authListener } = supabaseClient.auth.onAuthStateChange(async (_event, session) => {
+    if (!initialSessionResolved) return;
+
+    if (session?.user) {
+      const nextUser = mapUser(session.user);
+      const userChanged = !currentUser || currentUser.id !== nextUser.id;
+      currentUser = nextUser;
+
+      if (els.appShell.classList.contains('hidden') || userChanged) {
+        await enterApp({ forceReload: userChanged });
+      } else {
+        els.accountLabel.textContent = formatAccountLabel(currentUser);
+      }
+    } else {
+      currentUser = null;
+      appReadyForUserId = null;
+      appState = { sessions: [] };
+      showAuth();
+      switchAuthTab('login');
+    }
+  });
+  authSubscription = authListener?.subscription || null;
+}
 function bindBaseEvents() {
   els.authTabs.forEach(tab => tab.addEventListener('click', () => switchAuthTab(tab.dataset.authTab)));
   els.loginForm.addEventListener('submit', handleLogin);
@@ -189,17 +201,32 @@ function showAuth() {
   els.appShell.classList.add('hidden');
 }
 
-async function enterApp() {
+async function enterApp({ forceReload = false } = {}) {
   if (!currentUser) return;
-  els.accountLabel.textContent = formatAccountLabel(currentUser);
-  els.authGate.classList.add('hidden');
-  els.appShell.classList.remove('hidden');
-  await loadSessions();
-  renderWorkoutForm();
-  renderHistory();
-  renderDashboard();
-}
 
+  const targetUserId = currentUser.id;
+  if (!forceReload && appReadyForUserId === targetUserId && !els.appShell.classList.contains('hidden')) {
+    els.accountLabel.textContent = formatAccountLabel(currentUser);
+    return;
+  }
+
+  if (enteringAppPromise) return enteringAppPromise;
+
+  enteringAppPromise = (async () => {
+    els.accountLabel.textContent = formatAccountLabel(currentUser);
+    els.authGate.classList.add('hidden');
+    els.appShell.classList.remove('hidden');
+    await loadSessions();
+    renderWorkoutForm();
+    renderHistory();
+    renderDashboard();
+    appReadyForUserId = targetUserId;
+  })().finally(() => {
+    enteringAppPromise = null;
+  });
+
+  return enteringAppPromise;
+}
 function formatAccountLabel(user) {
   return `${user.name} · ${user.email}`;
 }
@@ -223,10 +250,8 @@ async function handleLogin(event) {
       password: els.loginPassword.value,
     });
     if (error) throw error;
-    currentUser = mapUser(data.user || data.session?.user);
     els.loginForm.reset();
     showAuthMessage('');
-    await enterApp();
     showToast('Du er logget inn.');
   } catch (error) {
     showAuthMessage(error.message || 'Innlogging feilet.');
@@ -250,9 +275,7 @@ async function handleRegister(event) {
     els.registerForm.reset();
 
     if (data.session?.user) {
-      currentUser = mapUser(data.session.user);
       showAuthMessage('');
-      await enterApp();
       showToast('Brukeren ble opprettet.');
       return;
     }
@@ -272,6 +295,7 @@ async function handleLogout() {
     // ignore
   }
   currentUser = null;
+  appReadyForUserId = null;
   appState = { sessions: [] };
   showAuth();
   switchAuthTab('login');
