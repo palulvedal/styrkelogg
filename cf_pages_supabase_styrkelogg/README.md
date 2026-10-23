@@ -35,25 +35,23 @@ Med Git-tilkobling bruker du:
 Miljøvariablene `SUPABASE_URL` og `SUPABASE_ANON_KEY` trengs ikke lenger og kan slettes.
 
 ## 3. Cloudflare Access
-1. Åpne **Zero Trust** i Cloudflare-dashbordet. Første gang velger du et team-navn og gratisplanen.
-2. Gå til **Access → Applications → Add an application → Self-hosted**.
-3. Legg til domenene appen bruker, f.eks.:
-   - `styrkelogg-pages.pages.dev`
-   - `*.styrkelogg-pages.pages.dev` (forhåndsvisninger)
-   - eget domene, hvis du har et
-4. Lag en policy med **Action: Allow** og **Include → Emails** med din e-post
-   (og eventuelt andres).
-5. Under **Authentication** er **One-time PIN** nok.
-6. Når appen er lagret, kopierer du **Application Audience (AUD) Tag**.
-7. Fyll inn `wrangler.toml`:
+Appen bruker `https://styrkelogg.berg-ulvedal.no`, som er beskyttet av Access
+(team `berg-ulvedal`). `styrkelogg.pages.dev` sendes videre dit av `functions/_middleware.js`.
+
+Ved oppsett på nytt:
+1. Åpne **Zero Trust → Access → Applications → Add an application → Self-hosted**
+   og legg inn domenet appen bruker.
+2. Lag en policy med **Action: Allow** og **Include → Emails** med de godkjente e-postene.
+   **One-time PIN** holder som innloggingsmetode.
+3. Kopier **Application Audience (AUD) Tag** og fyll inn `wrangler.toml`:
    ```toml
    [vars]
    ACCESS_TEAM_DOMAIN = "https://<team-navn>.cloudflareaccess.com"
    ACCESS_AUD = "<AUD-tag>"
+   CANONICAL_HOST = "<domenet>"
    ```
-   Deretter deployer du på nytt.
 
-Før begge verdiene er fylt inn, avviser API-et alle forespørsler.
+Uten `ACCESS_TEAM_DOMAIN` og `ACCESS_AUD` avviser API-et alle forespørsler.
 
 ## 4. Flytte data fra Supabase
 1. Åpne den gamle appen og velg **Historikk → Eksporter data**.

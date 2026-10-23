@@ -1,4 +1,4 @@
-name = "styrkelogg-pages"
+name = "styrkelogg"
 compatibility_date = "2026-04-28"
 pages_build_output_dir = "dist"
 
@@ -7,8 +7,10 @@ binding = "DB"
 database_name = "styrkelogg"
 database_id = "0bd1442d-943b-4ac2-8026-f517b447674c"
 
-# Cloudflare Access (see README). Neither value is secret.
-# The API rejects every request until both are filled in.
+# Cloudflare Access (see README). None of these values are secret.
+# The API rejects every request until ACCESS_TEAM_DOMAIN and ACCESS_AUD are set.
 [vars]
-ACCESS_TEAM_DOMAIN = ""  # e.g. "https://myteam.cloudflareaccess.com"
-ACCESS_AUD = ""          # Application Audience (AUD) tag
+ACCESS_TEAM_DOMAIN = "https://berg-ulvedal.cloudflareaccess.com"
+ACCESS_AUD = "4853759acfbfd129c18b3ea73976ba02b106d7f82c653ec082abf42bf81cb1f7"
+# The Access-protected domain. Requests to styrkelogg.pages.dev are redirected here.
+CANONICAL_HOST = "styrkelogg.berg-ulvedal.no"
