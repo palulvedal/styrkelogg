@@ -1,106 +1,79 @@
-# Styrkelogg for Cloudflare Pages + Supabase
+# Styrkelogg for Cloudflare Pages + D1 + Access
 
-Denne versjonen er bygget for:
-- **Cloudflare Pages** som hosting av frontend
-- **Supabase Auth** for registrering / innlogging
-- **Supabase Postgres** for lagring av økter
+Alt kjører hos Cloudflare:
+- **Cloudflare Pages** hoster frontend
+- **Pages Functions** (`functions/`) er et lite API under `/api`
+- **Cloudflare D1** (SQLite) lagrer øktene – settes ikke på pause ved inaktivitet
+- **Cloudflare Access** står for innlogging (engangskode på e-post)
 
-Appen er helt uten egen backend. Dataene lagres i Supabase, og tilgang styres med Row Level Security (RLS).
+Appen har ingen egne passord. Access slipper bare inn e-postadressene du har godkjent,
+og API-et verifiserer Access-tokenet på hver forespørsel. Hver bruker ser bare egne økter.
 
 ## Hva som er med
 - mobilvennlig UI
-- registrering og innlogging
 - to ferdige økter med supersett
 - logging av sett, reps, kilo og sekunder
 - historikk med sletting
-- grafer for:
-  - økter per uke
-  - styrketrend
-  - volum per uke
-  - beste noteringer
+- grafer for økter per uke, styrketrend, volum per uke og beste noteringer
 - eksport og import av JSON-backup
 
-## 1. Opprett Supabase-prosjekt
-Opprett et nytt prosjekt i Supabase.
+## 1. D1-database
+Databasen `styrkelogg` er opprettet, og ID-en står i `wrangler.toml`.
+Tabellen opprettes av `migrations/0001_workout_sessions.sql`. Slik kjører du den selv:
 
-Finn deretter:
-- **Project URL**
-- **anon key**
+```bash
+npx wrangler d1 migrations apply styrkelogg --remote
+```
 
-Du trenger disse som:
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-
-## 2. Kjør SQL-oppsettet
-Åpne **SQL Editor** i Supabase og kjør:
-
-- `supabase/001_workout_sessions.sql`
-
-Dette oppretter:
-- tabellen `public.workout_sessions`
-- indekser
-- trigger for `updated_at`
-- RLS-policyer som gjør at hver bruker bare ser og endrer egne økter
-
-## 3. Sett opp auth
-I Supabase:
-- Gå til **Authentication**
-- Sørg for at e-post/passord er aktivert
-
-For enklest mulig oppsett kan du slå av e-postbekreftelse.
-Hvis du vil beholde e-postbekreftelse:
-- sett **Site URL** til Cloudflare Pages-adressen din
-- legg samme URL til som redirect URL ved behov
-
-## 4. Deploy til Cloudflare Pages
-
-### Via Git
-Legg prosjektet i et Git-repo og opprett et nytt Pages-prosjekt.
-
-Bruk disse innstillingene:
+## 2. Pages-prosjekt
+Med Git-tilkobling bruker du:
+- **Root directory:** `cf_pages_supabase_styrkelogg`
 - **Build command:** `node scripts/build.mjs`
 - **Build output directory:** `dist`
 
-Legg til miljøvariabler i Pages:
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
+`wrangler.toml` kobler D1-databasen til prosjektet som `DB`.
+Miljøvariablene `SUPABASE_URL` og `SUPABASE_ANON_KEY` trengs ikke lenger og kan slettes.
 
-### Via Direct Upload
-Du kan også bygge lokalt og laste opp `dist/`.
+## 3. Cloudflare Access
+1. Åpne **Zero Trust** i Cloudflare-dashbordet. Første gang velger du et team-navn og gratisplanen.
+2. Gå til **Access → Applications → Add an application → Self-hosted**.
+3. Legg til domenene appen bruker, f.eks.:
+   - `styrkelogg-pages.pages.dev`
+   - `*.styrkelogg-pages.pages.dev` (forhåndsvisninger)
+   - eget domene, hvis du har et
+4. Lag en policy med **Action: Allow** og **Include → Emails** med din e-post
+   (og eventuelt andres).
+5. Under **Authentication** er **One-time PIN** nok.
+6. Når appen er lagret, kopierer du **Application Audience (AUD) Tag**.
+7. Fyll inn `wrangler.toml`:
+   ```toml
+   [vars]
+   ACCESS_TEAM_DOMAIN = "https://<team-navn>.cloudflareaccess.com"
+   ACCESS_AUD = "<AUD-tag>"
+   ```
+   Deretter deployer du på nytt.
 
-Lokalt:
-```bash
-export SUPABASE_URL="https://YOUR-PROJECT.supabase.co"
-export SUPABASE_ANON_KEY="YOUR_ANON_KEY"
-node scripts/build.mjs
-```
+Før begge verdiene er fylt inn, avviser API-et alle forespørsler.
 
-Deretter kan `dist/` deployes til Pages.
+## 4. Flytte data fra Supabase
+1. Åpne den gamle appen og velg **Historikk → Eksporter data**.
+2. Åpne den nye appen og velg **Historikk → Importer data**.
 
 ## 5. Lokal test
-Bygg først:
 ```bash
-export SUPABASE_URL="https://YOUR-PROJECT.supabase.co"
-export SUPABASE_ANON_KEY="YOUR_ANON_KEY"
-node scripts/build.mjs
+npm install
+npm run db:migrate:local
+echo DEV_USER_EMAIL=deg@eksempel.no > .dev.vars
+npm run dev
 ```
-
-Kjør så en enkel lokal server:
-```bash
-python3 -m http.server 8788 -d dist
-```
-
-Åpne deretter:
-- `http://127.0.0.1:8788`
+Så åpner du `http://127.0.0.1:8788`. Lokalt hopper API-et over Access-sjekken, siden
+`DEV_USER_EMAIL` er satt og `ACCESS_AUD` står tom.
 
 ## Filstruktur
-- `src/index.html` – HTML
-- `src/styles.css` – styling
-- `src/app.js` – all frontendlogikk
-- `scripts/build.mjs` – bygger `dist/` og injiserer config
-- `supabase/001_workout_sessions.sql` – database og RLS
-
-## Viktige notater
-- `SUPABASE_ANON_KEY` er ment for frontend-bruk, men appen forutsetter at RLS er aktiv.
-- Hvis du bytter domene senere, oppdater **Site URL** i Supabase.
-- `dist/app-config.js` markeres som `no-store` i `_headers` for å redusere caching av config.
+- `src/` – HTML, CSS og frontendlogikk
+- `functions/api/_middleware.js` – verifiserer Access-token
+- `functions/api/me.js` – hvem er logget inn
+- `functions/api/sessions/` – hente, lagre, importere og slette økter
+- `functions/_lib.js` – felles validering og SQL
+- `migrations/` – D1-skjema
+- `scripts/build.mjs` – bygger `dist/`

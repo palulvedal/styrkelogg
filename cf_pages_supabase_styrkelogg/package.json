@@ -1,8 +1,14 @@
 {
-  "name": "styrkelogg-pages-supabase",
+  "name": "styrkelogg-pages",
   "private": true,
-  "version": "1.0.0",
+  "version": "2.0.0",
   "scripts": {
-    "build": "node scripts/build.mjs"
+    "build": "node scripts/build.mjs",
+    "db:migrate:local": "wrangler d1 migrations apply styrkelogg --local",
+    "db:migrate:remote": "wrangler d1 migrations apply styrkelogg --remote",
+    "dev": "node scripts/build.mjs && wrangler pages dev dist"
+  },
+  "devDependencies": {
+    "wrangler": "^4.20.0"
   }
 }

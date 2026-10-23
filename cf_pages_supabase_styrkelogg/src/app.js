@@ -44,24 +44,12 @@ let exerciseCatalog = EXERCISE_CATALOG;
 let workouts = WORKOUTS;
 let appState = { sessions: [] };
 let currentUser = null;
-let supabaseClient = null;
-let authSubscription = null;
-let initialSessionResolved = false;
-let enteringAppPromise = null;
-let appReadyForUserId = null;
 
 const els = {
   authGate: document.getElementById('authGate'),
   appShell: document.getElementById('appShell'),
-  authTabs: [...document.querySelectorAll('.auth-tab')],
-  loginForm: document.getElementById('loginForm'),
-  registerForm: document.getElementById('registerForm'),
   authMessage: document.getElementById('authMessage'),
-  loginEmail: document.getElementById('loginEmail'),
-  loginPassword: document.getElementById('loginPassword'),
-  registerName: document.getElementById('registerName'),
-  registerEmail: document.getElementById('registerEmail'),
-  registerPassword: document.getElementById('registerPassword'),
+  reloadBtn: document.getElementById('reloadBtn'),
   accountLabel: document.getElementById('accountLabel'),
   logoutBtn: document.getElementById('logoutBtn'),
   themeToggle: document.getElementById('themeToggle'),
@@ -99,75 +87,18 @@ async function init() {
   setToday();
   renderWorkoutForm();
 
-  const config = window.STRENGTHLOG_CONFIG || {};
-  const missingConfig = !config.supabaseUrl || !config.supabaseAnonKey ||
-    String(config.supabaseUrl).includes('YOUR_SUPABASE') ||
-    String(config.supabaseAnonKey).includes('YOUR_SUPABASE');
-
-  if (!window.supabase || typeof window.supabase.createClient !== 'function') {
-    showAuth();
-    showAuthMessage('Kunne ikke laste Supabase-biblioteket.');
-    return;
-  }
-
-  if (missingConfig) {
-    showAuth();
-    showAuthMessage('Appen mangler Supabase-oppsett. Sett SUPABASE_URL og SUPABASE_ANON_KEY før deploy.');
-    return;
-  }
-
-  supabaseClient = window.supabase.createClient(config.supabaseUrl, config.supabaseAnonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-    },
-  });
-
   try {
-    const { data, error } = await supabaseClient.auth.getSession();
-    if (error) throw error;
-
-    if (data.session?.user) {
-      currentUser = mapUser(data.session.user);
-      await enterApp({ forceReload: true });
-    } else {
-      showAuth();
-    }
+    const me = await api('GET', '/api/me');
+    currentUser = mapUser(me);
+    await enterApp();
   } catch (error) {
     showAuth();
-    showAuthMessage(error.message || 'Kunne ikke koble til Supabase.');
-  } finally {
-    initialSessionResolved = true;
+    showAuthMessage(error.message || 'Kunne ikke koble til serveren.');
   }
-
-  const { data: authListener } = supabaseClient.auth.onAuthStateChange(async (_event, session) => {
-    if (!initialSessionResolved) return;
-
-    if (session?.user) {
-      const nextUser = mapUser(session.user);
-      const userChanged = !currentUser || currentUser.id !== nextUser.id;
-      currentUser = nextUser;
-
-      if (els.appShell.classList.contains('hidden') || userChanged) {
-        await enterApp({ forceReload: userChanged });
-      } else {
-        els.accountLabel.textContent = formatAccountLabel(currentUser);
-      }
-    } else {
-      currentUser = null;
-      appReadyForUserId = null;
-      appState = { sessions: [] };
-      showAuth();
-      switchAuthTab('login');
-    }
-  });
-  authSubscription = authListener?.subscription || null;
 }
+
 function bindBaseEvents() {
-  els.authTabs.forEach(tab => tab.addEventListener('click', () => switchAuthTab(tab.dataset.authTab)));
-  els.loginForm.addEventListener('submit', handleLogin);
-  els.registerForm.addEventListener('submit', handleRegister);
+  els.reloadBtn.addEventListener('click', () => window.location.reload());
   els.logoutBtn.addEventListener('click', handleLogout);
 
   els.tabs.forEach(tab => tab.addEventListener('click', () => activateTab(tab.dataset.tab)));
@@ -189,155 +120,74 @@ function bindBaseEvents() {
   });
 }
 
-function switchAuthTab(tabName) {
-  els.authTabs.forEach(tab => tab.classList.toggle('active', tab.dataset.authTab === tabName));
-  els.loginForm.classList.toggle('hidden', tabName !== 'login');
-  els.registerForm.classList.toggle('hidden', tabName !== 'register');
-  showAuthMessage('');
-}
-
 function showAuth() {
   els.authGate.classList.remove('hidden');
   els.appShell.classList.add('hidden');
 }
 
-async function enterApp({ forceReload = false } = {}) {
-  if (!currentUser) return;
-
-  const targetUserId = currentUser.id;
-  if (!forceReload && appReadyForUserId === targetUserId && !els.appShell.classList.contains('hidden')) {
-    els.accountLabel.textContent = formatAccountLabel(currentUser);
-    return;
-  }
-
-  if (enteringAppPromise) return enteringAppPromise;
-
-  enteringAppPromise = (async () => {
-    els.accountLabel.textContent = formatAccountLabel(currentUser);
-    els.authGate.classList.add('hidden');
-    els.appShell.classList.remove('hidden');
-    await loadSessions();
-    renderWorkoutForm();
-    renderHistory();
-    renderDashboard();
-    appReadyForUserId = targetUserId;
-  })().finally(() => {
-    enteringAppPromise = null;
-  });
-
-  return enteringAppPromise;
+async function enterApp() {
+  els.accountLabel.textContent = formatAccountLabel(currentUser);
+  await loadSessions();
+  els.authGate.classList.add('hidden');
+  els.appShell.classList.remove('hidden');
+  renderWorkoutForm();
+  renderHistory();
+  renderDashboard();
 }
+
 function formatAccountLabel(user) {
   return `${user.name} · ${user.email}`;
 }
 
 function mapUser(user) {
-  const name = user?.user_metadata?.name || user?.email?.split('@')[0] || 'Bruker';
+  const email = user?.email || '';
   return {
-    id: user.id,
-    email: user.email || '',
-    name,
+    email,
+    name: email.split('@')[0] || 'Bruker',
   };
 }
 
-async function handleLogin(event) {
-  event.preventDefault();
-  if (!supabaseClient) return;
-  showAuthMessage('Logger inn …');
-  try {
-    const { data, error } = await supabaseClient.auth.signInWithPassword({
-      email: els.loginEmail.value.trim(),
-      password: els.loginPassword.value,
-    });
-    if (error) throw error;
-    els.loginForm.reset();
-    showAuthMessage('');
-    showToast('Du er logget inn.');
-  } catch (error) {
-    showAuthMessage(error.message || 'Innlogging feilet.');
-  }
+function handleLogout() {
+  // Ends the Cloudflare Access session; the next visit asks for a new login code.
+  window.location.href = '/cdn-cgi/access/logout';
 }
 
-async function handleRegister(event) {
-  event.preventDefault();
-  if (!supabaseClient) return;
-  showAuthMessage('Oppretter bruker …');
+// Calls our own API. A redirect means the Access session has expired,
+// so the page is reloaded to let Access show its login screen.
+async function api(method, url, body) {
+  let res;
   try {
-    const { data, error } = await supabaseClient.auth.signUp({
-      email: els.registerEmail.value.trim(),
-      password: els.registerPassword.value,
-      options: {
-        data: { name: els.registerName.value.trim() },
-        emailRedirectTo: window.location.origin,
-      },
+    res = await fetch(url, {
+      method,
+      credentials: 'same-origin',
+      redirect: 'manual',
+      headers: body ? { 'Content-Type': 'application/json' } : {},
+      body: body ? JSON.stringify(body) : undefined,
     });
-    if (error) throw error;
-    els.registerForm.reset();
-
-    if (data.session?.user) {
-      showAuthMessage('');
-      showToast('Brukeren ble opprettet.');
-      return;
-    }
-
-    showAuthMessage('Brukeren er opprettet. Sjekk e-post hvis prosjektet krever e-postbekreftelse.');
-  } catch (error) {
-    showAuthMessage(error.message || 'Kunne ikke opprette bruker.');
-  }
-}
-
-async function handleLogout() {
-  if (!supabaseClient) return;
-  try {
-    const { error } = await supabaseClient.auth.signOut();
-    if (error) throw error;
   } catch (_) {
-    // ignore
+    throw new Error('Fikk ikke kontakt med serveren. Sjekk nettet og prøv igjen.');
   }
-  currentUser = null;
-  appReadyForUserId = null;
-  appState = { sessions: [] };
-  showAuth();
-  switchAuthTab('login');
-  showToast('Du er logget ut.');
+
+  if (res.type === 'opaqueredirect' || (res.status >= 300 && res.status < 400)) {
+    window.location.reload();
+    throw new Error('Innloggingen er utløpt. Laster siden på nytt …');
+  }
+
+  let data = null;
+  try {
+    data = await res.json();
+  } catch (_) {
+    // non-JSON response
+  }
+  if (!res.ok) {
+    throw new Error(data?.error || `Serverfeil (${res.status}).`);
+  }
+  return data;
 }
 
 async function loadSessions() {
-  if (!supabaseClient || !currentUser) return;
-  const { data, error } = await supabaseClient
-    .from('workout_sessions')
-    .select('id, user_id, session_date, workout_key, notes, payload_json, created_at, updated_at')
-    .order('session_date', { ascending: true })
-    .order('created_at', { ascending: true });
-
-  if (error) throw error;
-  appState.sessions = (data || []).map(mapDbSession);
-}
-
-function mapDbSession(row) {
-  const payload = row.payload_json || {};
-  return {
-    id: row.id,
-    date: row.session_date,
-    workoutKey: row.workout_key,
-    notes: row.notes || '',
-    exerciseLogs: Array.isArray(payload.exerciseLogs) ? payload.exerciseLogs : [],
-    createdAt: row.created_at || null,
-    updatedAt: row.updated_at || null,
-  };
-}
-
-function toDbSession(session) {
-  return {
-    id: String(session.id || generateId()),
-    user_id: currentUser.id,
-    session_date: session.date,
-    workout_key: session.workoutKey,
-    notes: session.notes || '',
-    payload_json: { exerciseLogs: session.exerciseLogs || [] },
-    created_at: session.createdAt || new Date().toISOString(),
-    updated_at: session.updatedAt || new Date().toISOString(),
-  };
+  const data = await api('GET', '/api/sessions');
+  appState.sessions = Array.isArray(data?.sessions) ? data.sessions : [];
 }
 
 function generateId() {
@@ -465,18 +315,8 @@ async function saveSession(event) {
   };
 
   try {
-    if (!supabaseClient || !currentUser) {
-      throw new Error('Du må være logget inn for å lagre økter.');
-    }
-    const row = toDbSession(session);
-    const { data, error } = await supabaseClient
-      .from('workout_sessions')
-      .insert([row])
-      .select('id, user_id, session_date, workout_key, notes, payload_json, created_at, updated_at')
-      .single();
-    if (error) throw error;
-
-    appState.sessions.push(mapDbSession(data));
+    const data = await api('POST', '/api/sessions', session);
+    appState.sessions.push(data.session);
     appState.sessions.sort((a, b) => a.date.localeCompare(b.date));
     renderHistory();
     renderDashboard();
@@ -523,15 +363,7 @@ function renderHistory() {
     div.querySelector('.delete-session-btn').addEventListener('click', async () => {
       if (!confirm('Slette denne økten?')) return;
       try {
-        if (!supabaseClient || !currentUser) {
-          throw new Error('Du må være logget inn for å slette økter.');
-        }
-        const { error } = await supabaseClient
-          .from('workout_sessions')
-          .delete()
-          .eq('id', session.id)
-          .eq('user_id', currentUser.id);
-        if (error) throw error;
+        await api('DELETE', `/api/sessions/${encodeURIComponent(session.id)}`);
 
         appState.sessions = appState.sessions.filter(s => s.id !== session.id);
         renderHistory();
@@ -781,18 +613,15 @@ function importData(event) {
       if (!imported.sessions || !Array.isArray(imported.sessions)) {
         throw new Error('Mangler sessions-array.');
       }
-      const rows = imported.sessions.map(cleanImportedSession).map(toDbSession);
-      if (!rows.length) {
+      const sessions = imported.sessions.map(cleanImportedSession);
+      if (!sessions.length) {
         throw new Error('Ingen gyldige økter i filen.');
       }
-      const { error } = await supabaseClient
-        .from('workout_sessions')
-        .upsert(rows, { onConflict: 'id' });
-      if (error) throw error;
+      const result = await api('PUT', '/api/sessions', { sessions });
       await loadSessions();
       renderHistory();
       renderDashboard();
-      showToast('Data ble importert til Supabase.');
+      showToast(`${result.imported} økter ble importert.`);
     } catch (error) {
       showToast(error.message || 'Kunne ikke importere filen.');
     } finally {

@@ -1,3 +1,14 @@
 name = "styrkelogg-pages"
 compatibility_date = "2026-04-28"
 pages_build_output_dir = "dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "styrkelogg"
+database_id = "0bd1442d-943b-4ac2-8026-f517b447674c"
+
+# Cloudflare Access (see README). Neither value is secret.
+# The API rejects every request until both are filled in.
+[vars]
+ACCESS_TEAM_DOMAIN = ""  # e.g. "https://myteam.cloudflareaccess.com"
+ACCESS_AUD = ""          # Application Audience (AUD) tag

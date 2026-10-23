@@ -10,44 +10,10 @@
 <body>
   <div id="authGate" class="auth-shell">
     <section class="auth-card">
-      <p class="eyebrow">Styrkelogg med Supabase</p>
-      <h1>Logg inn</h1>
-      <p class="muted">Øktene dine lagres i Supabase, så du kan bruke samme innlogging på flere enheter.</p>
-
-      <div class="auth-tabs" role="tablist" aria-label="Innlogging og registrering">
-        <button class="auth-tab active" data-auth-tab="login" type="button">Logg inn</button>
-        <button class="auth-tab" data-auth-tab="register" type="button">Opprett bruker</button>
-      </div>
-
-      <form id="loginForm" class="auth-form">
-        <label>
-          <span>E-post</span>
-          <input id="loginEmail" type="email" autocomplete="username" required />
-        </label>
-        <label>
-          <span>Passord</span>
-          <input id="loginPassword" type="password" autocomplete="current-password" required />
-        </label>
-        <button class="primary-btn full-width" type="submit">Logg inn</button>
-      </form>
-
-      <form id="registerForm" class="auth-form hidden">
-        <label>
-          <span>Navn</span>
-          <input id="registerName" type="text" autocomplete="name" required />
-        </label>
-        <label>
-          <span>E-post</span>
-          <input id="registerEmail" type="email" autocomplete="username" required />
-        </label>
-        <label>
-          <span>Passord</span>
-          <input id="registerPassword" type="password" autocomplete="new-password" minlength="8" required />
-        </label>
-        <button class="primary-btn full-width" type="submit">Opprett bruker</button>
-      </form>
-
+      <p class="eyebrow">Styrkelogg</p>
+      <h1>Laster …</h1>
       <p id="authMessage" class="auth-message muted"></p>
+      <button id="reloadBtn" class="primary-btn full-width" type="button">Prøv igjen</button>
     </section>
   </div>
 
@@ -211,9 +177,6 @@
     </div>
   </template>
 
-  
-  <script src="./app-config.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="./app.js"></script>
 </body>
 </html>
