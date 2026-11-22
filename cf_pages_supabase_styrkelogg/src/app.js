@@ -19,8 +19,8 @@ const EXERCISE_CATALOG = {
   // and defaultValue pre-fills the form so the routine can be logged with one tap.
   catcow: { name: 'Katt–ku', type: 'reps', category: 'mobility', defaultSets: 1, defaultValue: 8, target: '8 rolige repetisjoner (ca. 45 sek)' },
   hiplift9090: { name: '90/90 hip lift mot vegg', type: 'seconds', category: 'mobility', defaultSets: 2, defaultValue: 45, target: '2 runder × 4–5 lange utpust (ca. 45 sek)' },
-  deadbug: { name: 'Dead bug', type: 'reps', category: 'mobility', defaultSets: 1, defaultValue: 8, target: '8 per side, korsryggen i gulvet' },
-  hipflexor: { name: 'Halvknestående hoftebøyerstrekk', type: 'seconds', category: 'mobility', defaultSets: 2, defaultValue: 30, target: '30 sek per side, klem setet og tipp bekkenet bakover' },
+  deadbug: { name: 'Dead bug', type: 'reps', category: 'mobility', defaultSets: 1, defaultValue: 8, target: '8 per side, korsryggen i gulvet', video: 'https://youtu.be/31MyQr0zSwU' },
+  hipflexor: { name: 'Halvknestående hoftebøyerstrekk', type: 'seconds', category: 'mobility', defaultSets: 2, defaultValue: 30, target: '30 sek per side, klem setet og tipp bekkenet bakover', video: 'https://youtu.be/HxlWP5BG2EU' },
   deepsquat: { name: 'Dyp knebøy-hvile', type: 'seconds', category: 'mobility', defaultSets: 1, defaultValue: 45, target: '45 sek, hold deg gjerne i noe' },
 };
 const WORKOUTS = {
@@ -236,6 +236,10 @@ function selectWorkoutFromUrl() {
   }
 }
 
+function videoLink(url) {
+  return `<a href="${url}" target="_blank" rel="noopener">Se video ▶</a>`;
+}
+
 function isMobilitySession(session) {
   return Boolean(workouts[session.workoutKey]?.mobility);
 }
@@ -270,6 +274,9 @@ function renderWorkoutForm() {
       node.querySelector('.superset-label').textContent = pair.label;
       node.querySelector('.exercise-name').textContent = meta.name;
       node.querySelector('.exercise-target').textContent = meta.target;
+      if (meta.video) {
+        node.querySelector('.exercise-target').insertAdjacentHTML('beforeend', ` · ${videoLink(meta.video)}`);
+      }
 
       const table = node.querySelector('.set-table');
       for (let i = 0; i < meta.defaultSets; i++) {
@@ -424,7 +431,7 @@ function renderPlan() {
         <div class="plan-pair">
           <strong>${pair.label}</strong>
           <ul>
-            ${pair.exercises.map(key => `<li>${exerciseCatalog[key].name} — ${exerciseCatalog[key].target}</li>`).join('')}
+            ${pair.exercises.map(key => `<li>${exerciseCatalog[key].name} — ${exerciseCatalog[key].target}${exerciseCatalog[key].video ? ` · ${videoLink(exerciseCatalog[key].video)}` : ''}</li>`).join('')}
           </ul>
         </div>
       `).join('')}
