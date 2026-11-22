@@ -8,9 +8,8 @@ const distDir = path.join(root, 'dist');
 await rm(distDir, { recursive: true, force: true });
 await mkdir(distDir, { recursive: true });
 
-for (const file of ['index.html', 'styles.css', 'app.js']) {
-  await cp(path.join(srcDir, file), path.join(distDir, file));
-}
+// Copy everything in src/ (HTML, CSS, JS, manifest and icons).
+await cp(srcDir, distDir, { recursive: true });
 
 // Avoid stale app code after a deploy
 const headers = [

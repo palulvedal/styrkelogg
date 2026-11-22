@@ -461,3 +461,116 @@ input, select, textarea {
     display: none;
   }
 }
+
+/* ---------- Week overview ---------- */
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 6px;
+}
+
+.wk-day {
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  gap: 4px;
+  padding: 8px 2px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  min-height: 92px;
+  text-align: center;
+}
+
+.wk-day.today {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
+.wk-name { font-weight: 700; font-size: 0.85rem; }
+.wk-date { font-size: 0.75rem; color: var(--muted); }
+
+.wk-strength {
+  font-size: 0.7rem;
+  font-weight: 650;
+  line-height: 1.2;
+  padding: 2px 4px;
+  border-radius: 6px;
+}
+
+.wk-strength.planned { color: var(--brand); border: 1px dashed var(--brand); }
+.wk-strength.done { color: #fff; background: var(--success); }
+.wk-strength.missed { color: var(--danger); border: 1px dashed var(--danger); }
+
+.wk-evening { font-size: 1rem; color: var(--muted); line-height: 1; }
+.wk-evening.done { color: var(--success); }
+.wk-evening.missed { color: var(--danger); opacity: 0.6; }
+
+/* ---------- Log form ---------- */
+.last-hint {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  color: var(--success);
+}
+
+.guide-start { margin: 4px 0 14px; }
+
+/* ---------- Guided routine ---------- */
+body.no-scroll { overflow: hidden; }
+
+.guide {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  background: var(--bg);
+  display: grid;
+}
+
+.guide-inner {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  max-width: 560px;
+  width: 100%;
+  margin: 0 auto;
+  padding: max(16px, env(safe-area-inset-top)) 18px max(20px, env(safe-area-inset-bottom));
+}
+
+.guide-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.guide-body {
+  display: grid;
+  align-content: center;
+  text-align: center;
+  gap: 6px;
+}
+
+.guide-body h2 { font-size: 1.7rem; margin: 0; }
+
+.guide-timer {
+  font-size: 5rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  margin-top: 18px;
+  min-height: 1.2em;
+}
+
+.guide-actions {
+  display: grid;
+  gap: 10px;
+}
+
+.guide-actions .primary-btn {
+  padding: 18px;
+  font-size: 1.2rem;
+}
+
+@media (max-width: 640px) {
+  .week-grid { gap: 4px; }
+  .wk-day { min-height: 84px; }
+  .guide-timer { font-size: 4.2rem; }
+}
+
+#weekSummary { margin: 10px 0 0; }

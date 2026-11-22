@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#111827" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Styrkelogg" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
+  <link rel="icon" href="/icon-192.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <title>Styrkelogg</title>
   <link rel="stylesheet" href="./styles.css" />
 </head>
@@ -39,6 +46,15 @@
 
     <main>
       <section id="dashboard" class="tab-panel active">
+        <div class="card week-card">
+          <div class="card-head">
+            <h2>Denne uka</h2>
+            <button id="logTodayBtn" class="primary-btn" type="button">Logg økt →</button>
+          </div>
+          <div id="weekView" class="week-grid"></div>
+          <p id="weekSummary" class="muted tiny"></p>
+        </div>
+
         <div class="card intro-card">
           <div>
             <h2>Utvikling over tid</h2>
@@ -112,7 +128,9 @@
               </label>
             </div>
           </div>
-          <p class="muted">Programmet er forhåndsutfylt med supersett-versjonen med litt ekstra mage og rygg.</p>
+          <p id="logIntro" class="muted"></p>
+          <p class="muted tiny">Feltene er fylt ut med tallene fra sist. Juster det du gjorde, og fjern sett du hoppet over.</p>
+          <button id="guideBtn" class="primary-btn full-width guide-start hidden" type="button">Start guidet rutine ▶</button>
           <form id="logForm">
             <div id="exerciseFormArea"></div>
             <label class="notes-wrap">
@@ -148,11 +166,30 @@
       <section id="plan" class="tab-panel">
         <div class="card">
           <h2>Treningsplan</h2>
-          <p class="muted">To korte økter per uke, med hovedfokus på overkropp. Supersettene er satt opp slik at øktene holder seg korte.</p>
+          <p class="muted">Økt 1 onsdag morgen, økt 2 fredag morgen og kveldsrutinen hver kveld. Supersettene holder styrkeøktene korte.</p>
           <div id="planView"></div>
         </div>
       </section>
     </main>
+  </div>
+
+  <div id="guide" class="guide hidden" role="dialog" aria-modal="true" aria-labelledby="guideName">
+    <div class="guide-inner">
+      <div class="guide-top">
+        <span id="guideProgress" class="muted"></span>
+        <button id="guideClose" class="ghost-btn" type="button">Avslutt</button>
+      </div>
+      <div class="guide-body">
+        <p id="guideStep" class="superset-label"></p>
+        <h2 id="guideName"></h2>
+        <p id="guideTarget" class="muted"></p>
+        <div id="guideTimer" class="guide-timer"></div>
+      </div>
+      <div class="guide-actions">
+        <button id="guideMain" class="primary-btn" type="button">Start</button>
+        <button id="guideSkip" class="ghost-btn" type="button">Hopp over</button>
+      </div>
+    </div>
   </div>
 
   <template id="exerciseTemplate">

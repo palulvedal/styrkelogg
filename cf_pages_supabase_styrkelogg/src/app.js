@@ -26,6 +26,7 @@ const EXERCISE_CATALOG = {
 const WORKOUTS = {
   workout1: {
     name: 'Økt 1',
+    day: 'Onsdag morgen',
     subtitle: 'Press, rygg og skuldre',
     pairs: [
       { label: 'Supersett 1', exercises: ['bench', 'row'] },
@@ -36,6 +37,7 @@ const WORKOUTS = {
   },
   workout2: {
     name: 'Økt 2',
+    day: 'Fredag morgen',
     subtitle: 'Rygg, bryst, armer og kjerne',
     pairs: [
       { label: 'Supersett 1', exercises: ['incline', 'chestrow'] },
@@ -46,6 +48,7 @@ const WORKOUTS = {
   },
   kveld: {
     name: 'Kveldsrutine (5 min)',
+    day: 'Hver kveld',
     subtitle: 'Hofter, bekken og pust – hver kveld',
     mobility: true,
     pairs: [
@@ -58,6 +61,14 @@ const WORKOUTS = {
   },
 };
 const THEME_KEY = 'strengthlog_theme';
+// Weekly plan, keyed by Date.getDay() (0 = søndag): Økt 1 onsdag, Økt 2 fredag.
+const WEEK_PLAN = { 3: 'workout1', 5: 'workout2' };
+const EVENING_KEY = 'kveld';
+const EVENING_FROM_HOUR = 15;
+const DAY_NAMES = ['Man', 'Tir', 'Ons', 'Tor', 'Fre', 'Lør', 'Søn'];
+// Unsaved form input is kept in localStorage so an Access reload doesn't lose it.
+const DRAFT_KEY = 'strengthlog_drafts';
+const DRAFT_MAX_AGE_MS = 18 * 60 * 60 * 1000;
 
 let exerciseCatalog = EXERCISE_CATALOG;
 let workouts = WORKOUTS;
@@ -88,6 +99,20 @@ const els = {
   statMonth: document.getElementById('statMonth'),
   statVolume: document.getElementById('statVolume'),
   statEvening: document.getElementById('statEvening'),
+  weekView: document.getElementById('weekView'),
+  weekSummary: document.getElementById('weekSummary'),
+  logTodayBtn: document.getElementById('logTodayBtn'),
+  logIntro: document.getElementById('logIntro'),
+  guideBtn: document.getElementById('guideBtn'),
+  guide: document.getElementById('guide'),
+  guideProgress: document.getElementById('guideProgress'),
+  guideStep: document.getElementById('guideStep'),
+  guideName: document.getElementById('guideName'),
+  guideTarget: document.getElementById('guideTarget'),
+  guideTimer: document.getElementById('guideTimer'),
+  guideMain: document.getElementById('guideMain'),
+  guideSkip: document.getElementById('guideSkip'),
+  guideClose: document.getElementById('guideClose'),
   statEvening7: document.getElementById('statEvening7'),
   strengthExerciseSelect: document.getElementById('strengthExerciseSelect'),
   volumeExerciseSelect: document.getElementById('volumeExerciseSelect'),
@@ -103,7 +128,6 @@ async function init() {
   applyTheme();
   bindBaseEvents();
   populateWorkoutSelect();
-  selectWorkoutFromUrl();
   populateExerciseSelects();
   renderPlan();
   setToday();
@@ -124,11 +148,22 @@ function bindBaseEvents() {
   els.logoutBtn.addEventListener('click', handleLogout);
 
   els.tabs.forEach(tab => tab.addEventListener('click', () => activateTab(tab.dataset.tab)));
-  els.workoutSelect.addEventListener('change', renderWorkoutForm);
+  els.workoutSelect.addEventListener('change', () => renderWorkoutForm());
   els.clearFormBtn.addEventListener('click', () => {
+    clearDraft(els.workoutSelect.value);
     els.sessionNotes.value = '';
     renderWorkoutForm();
   });
+  els.logForm.addEventListener('input', saveDraft);
+  els.sessionDate.addEventListener('change', saveDraft);
+  els.logTodayBtn.addEventListener('click', () => {
+    selectWorkout(pickDefaultWorkout());
+    activateTab('log');
+  });
+  els.guideBtn.addEventListener('click', startGuide);
+  els.guideMain.addEventListener('click', onGuideMain);
+  els.guideSkip.addEventListener('click', () => nextGuideStep(true));
+  els.guideClose.addEventListener('click', () => closeGuide());
   els.logForm.addEventListener('submit', saveSession);
   els.exportBtn.addEventListener('click', exportData);
   els.importInput.addEventListener('change', importData);
@@ -152,7 +187,10 @@ async function enterApp() {
   await loadSessions();
   els.authGate.classList.add('hidden');
   els.appShell.classList.remove('hidden');
-  renderWorkoutForm();
+  const hasDraft = Boolean(latestDraft());
+  selectWorkout(pickDefaultWorkout());
+  if (new URLSearchParams(window.location.search).has('okt') || hasDraft) activateTab('log');
+  if (hasDraft) showToast('Fortsetter der du slapp.');
   renderHistory();
   renderDashboard();
 }
@@ -227,13 +265,32 @@ function populateWorkoutSelect() {
     .join('');
 }
 
-// Lets a bookmark or reminder link straight to a workout, e.g. /?okt=kveld
-function selectWorkoutFromUrl() {
-  const key = new URLSearchParams(window.location.search).get('okt');
-  if (key && workouts[key]) {
-    els.workoutSelect.value = key;
-    activateTab('log');
-  }
+// Chooses which workout the log form opens with:
+// 1) ?okt=<key> in the URL (used by reminders), 2) an unsaved draft,
+// 3) the weekly plan for today, 4) evenings → the evening routine,
+// 5) other mornings → whichever strength workout is still missing this week.
+function pickDefaultWorkout() {
+  const urlKey = new URLSearchParams(window.location.search).get('okt');
+  if (urlKey && workouts[urlKey]) return urlKey;
+  const draft = latestDraft();
+  if (draft && workouts[draft.workoutKey]) return draft.workoutKey;
+
+  const now = new Date();
+  const today = localIso(now);
+  if (now.getHours() >= EVENING_FROM_HOUR) return EVENING_KEY;
+  const doneToday = new Set(appState.sessions.filter(s => s.date === today).map(s => s.workoutKey));
+  const planned = WEEK_PLAN[now.getDay()];
+  if (planned) return doneToday.has(planned) ? EVENING_KEY : planned;
+  const doneThisWeek = new Set(appState.sessions
+    .filter(s => weekKey(s.date) === weekKey(today))
+    .map(s => s.workoutKey));
+  return Object.values(WEEK_PLAN).find(key => !doneThisWeek.has(key)) || EVENING_KEY;
+}
+
+function selectWorkout(key) {
+  if (!workouts[key]) return;
+  els.workoutSelect.value = key;
+  renderWorkoutForm();
 }
 
 function videoLink(url) {
@@ -258,13 +315,20 @@ function populateExerciseSelects() {
 }
 
 function setToday() {
-  els.sessionDate.value = new Date().toISOString().slice(0, 10);
+  els.sessionDate.value = localIso();
 }
 function renderWorkoutForm() {
-  const workout = workouts[els.workoutSelect.value];
+  const workoutKey = els.workoutSelect.value;
+  const workout = workouts[workoutKey];
   if (!workout) return;
   const exerciseTemplate = document.getElementById('exerciseTemplate');
   els.exerciseFormArea.innerHTML = '';
+  els.logIntro.textContent = `${workout.day} · ${workout.subtitle}`;
+  els.guideBtn.classList.toggle('hidden', !workout.mobility);
+
+  const draft = getDraft(workoutKey);
+  els.sessionNotes.value = draft?.notes || '';
+  if (draft?.date) els.sessionDate.value = draft.date;
 
   workout.pairs.forEach(pair => {
     pair.exercises.forEach(exerciseKey => {
@@ -278,19 +342,36 @@ function renderWorkoutForm() {
         node.querySelector('.exercise-target').insertAdjacentHTML('beforeend', ` · ${videoLink(meta.video)}`);
       }
 
+      // Strength exercises start from last time's numbers, with a nudge to progress.
+      const last = workout.mobility ? null : lastLogFor(exerciseKey);
+      if (last) {
+        const hint = document.createElement('p');
+        hint.className = 'last-hint';
+        hint.textContent = `Sist ${shortDate(last.date)}: ${formatSets(meta, last.sets)}.${progressionHint(meta, last.sets)}`;
+        node.querySelector('.exercise-target').after(hint);
+      }
+
       const table = node.querySelector('.set-table');
-      for (let i = 0; i < meta.defaultSets; i++) {
-        table.appendChild(createSetRow(exerciseKey, i + 1));
+      const initialSets = draft?.exercises?.[exerciseKey] ?? last?.sets ?? null;
+      if (initialSets) {
+        initialSets.forEach((set, i) => table.appendChild(createSetRow(exerciseKey, i + 1, set)));
+      } else {
+        for (let i = 0; i < meta.defaultSets; i++) {
+          table.appendChild(createSetRow(exerciseKey, i + 1));
+        }
       }
       node.querySelector('.add-set-btn').addEventListener('click', () => {
-        table.appendChild(createSetRow(exerciseKey, table.children.length + 1));
+        const rows = table.querySelectorAll('.set-row');
+        const previous = rows.length ? readSetRow(rows[rows.length - 1]) : null;
+        table.appendChild(createSetRow(exerciseKey, rows.length + 1, previous));
+        saveDraft();
       });
       els.exerciseFormArea.appendChild(node);
     });
   });
 }
 
-function createSetRow(exerciseKey, number) {
+function createSetRow(exerciseKey, number, values = null) {
   const meta = exerciseCatalog[exerciseKey];
   const row = document.getElementById('setRowTemplate').content.firstElementChild.cloneNode(true);
   row.querySelector('.set-label').textContent = number;
@@ -306,18 +387,22 @@ function createSetRow(exerciseKey, number) {
   } else if (meta.type === 'reps') {
     weight.classList.add('hidden');
   }
-  if (meta.defaultValue) {
+  if (values) {
+    if (values.weight > 0) weight.value = values.weight;
+    if (values.reps > 0) reps.value = values.reps;
+    if (values.seconds > 0) seconds.value = values.seconds;
+  } else if (meta.defaultValue) {
     (meta.type === 'seconds' ? seconds : reps).value = meta.defaultValue;
   }
 
+  // Removing every set is allowed: an exercise with no sets is simply not logged.
   row.querySelector('.remove-set-btn').addEventListener('click', () => {
     const table = row.parentElement;
-    if (table.children.length > 1) {
-      row.remove();
-      [...table.children].forEach((child, idx) => {
-        child.querySelector('.set-label').textContent = idx + 1;
-      });
-    }
+    row.remove();
+    [...table.children].forEach((child, idx) => {
+      child.querySelector('.set-label').textContent = idx + 1;
+    });
+    saveDraft();
   });
   return row;
 }
@@ -331,11 +416,7 @@ async function saveSession(event) {
     const exerciseKey = card.dataset.exercise;
     const meta = exerciseCatalog[exerciseKey];
     const sets = [...card.querySelectorAll('.set-row')]
-      .map(row => ({
-        weight: parseFloat(row.querySelector('.set-weight')?.value) || 0,
-        reps: parseInt(row.querySelector('.set-reps')?.value || '0', 10),
-        seconds: parseInt(row.querySelector('.set-seconds')?.value || '0', 10),
-      }))
+      .map(readSetRow)
       .filter(set => {
         if (meta.type === 'seconds') return set.seconds > 0;
         if (meta.type === 'reps') return set.reps > 0;
@@ -363,9 +444,10 @@ async function saveSession(event) {
     const data = await api('POST', '/api/sessions', session);
     appState.sessions.push(data.session);
     appState.sessions.sort((a, b) => a.date.localeCompare(b.date));
+    clearDraft(workoutKey);
     renderHistory();
     renderDashboard();
-    els.sessionNotes.value = '';
+    setToday();
     renderWorkoutForm();
     showToast('Økten ble lagret.');
     activateTab('history');
@@ -426,7 +508,7 @@ function renderPlan() {
   els.planView.innerHTML = Object.values(workouts).map(workout => `
     <section class="plan-workout">
       <h3>${workout.name}</h3>
-      <p class="muted">${workout.subtitle}</p>
+      <p class="muted">${workout.day} · ${workout.subtitle}</p>
       ${workout.pairs.map(pair => `
         <div class="plan-pair">
           <strong>${pair.label}</strong>
@@ -442,6 +524,7 @@ function renderPlan() {
 function renderDashboard() {
   const allSessions = [...appState.sessions].sort((a, b) => a.date.localeCompare(b.date));
   renderEveningStreak(allSessions.filter(isMobilitySession));
+  renderWeek(allSessions);
   const sessions = allSessions.filter(session => !isMobilitySession(session));
   els.statSessions.textContent = sessions.length;
   els.statMonth.textContent = sessions.filter(s => daysAgo(s.date) <= 30).length;
@@ -458,7 +541,7 @@ function renderDashboard() {
 function renderEveningStreak(sessions) {
   const dates = new Set(sessions.map(s => s.date));
   const day = new Date();
-  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const iso = localIso;
   if (!dates.has(iso(day))) day.setDate(day.getDate() - 1);
   let streak = 0;
   while (dates.has(iso(day))) {
@@ -659,7 +742,7 @@ async function exportData() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `styrkelogg-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `styrkelogg-backup-${localIso()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   } catch (error) {
@@ -730,6 +813,310 @@ function getExerciseVolume(log) {
   return log.sets.reduce((sum, set) => sum + ((set.weight || 0) * (set.reps || 0)), 0);
 }
 
+// ---------- Week overview ----------
+
+function renderWeek(sessions) {
+  const today = new Date();
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+  const todayIso = localIso(today);
+  let strengthDone = 0;
+  let eveningsDone = 0;
+
+  const cells = DAY_NAMES.map((name, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    const iso = localIso(d);
+    const daySessions = sessions.filter(s => s.date === iso);
+    const evening = daySessions.some(isMobilitySession);
+    const strength = daySessions.filter(s => !isMobilitySession(s));
+    const plannedKey = WEEK_PLAN[d.getDay()];
+    const isPast = iso < todayIso;
+    if (evening) eveningsDone += 1;
+    strengthDone += strength.length;
+
+    let strengthMark = '';
+    if (strength.length) {
+      strengthMark = `<span class="wk-strength done">${strength.map(s => workouts[s.workoutKey]?.name || 'Økt').join(', ')} ✓</span>`;
+    } else if (plannedKey) {
+      strengthMark = `<span class="wk-strength ${isPast ? 'missed' : 'planned'}">${workouts[plannedKey].name}</span>`;
+    }
+    const eveningMark = `<span class="wk-evening ${evening ? 'done' : isPast ? 'missed' : ''}" title="Kveldsrutine">${evening ? '●' : '○'}</span>`;
+    return `
+      <div class="wk-day${iso === todayIso ? ' today' : ''}">
+        <span class="wk-name">${name}</span>
+        <span class="wk-date">${d.getDate()}.</span>
+        ${strengthMark}
+        ${eveningMark}
+      </div>`;
+  });
+
+  els.weekView.innerHTML = cells.join('');
+  const strengthGoal = Object.keys(WEEK_PLAN).length;
+  els.weekSummary.textContent = `Styrke ${Math.min(strengthDone, 99)}/${strengthGoal} · Kveldsrutine ${eveningsDone}/7 (● = gjort)`;
+  els.logTodayBtn.textContent = `Logg ${workouts[pickDefaultWorkout()].name.toLowerCase()} →`;
+}
+
+// ---------- Last time's numbers ----------
+
+function lastLogFor(exerciseKey) {
+  const sorted = [...appState.sessions].sort((a, b) =>
+    b.date.localeCompare(a.date) || String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+  for (const session of sorted) {
+    const log = session.exerciseLogs.find(item => item.exerciseKey === exerciseKey);
+    if (log?.sets?.length) return { date: session.date, sets: log.sets };
+  }
+  return null;
+}
+
+function formatSets(meta, sets) {
+  return sets.map(set => {
+    if (meta.type === 'seconds') return `${set.seconds} sek`;
+    if (meta.type === 'reps') return `${set.reps}`;
+    return `${formatNumber(set.weight)}×${set.reps}`;
+  }).join(', ');
+}
+
+// Double progression: when every set reached the top of the rep range, add load (or reps).
+function progressionHint(meta, sets) {
+  const match = meta.target.match(/(\d+)–(\d+)\s*(reps|sek)/);
+  if (!match) return '';
+  const top = Number(match[2]);
+  const key = meta.type === 'seconds' ? 'seconds' : 'reps';
+  if (!sets.every(set => set[key] >= top)) return '';
+  if (meta.type === 'weight_reps') return ' Alle sett nådde toppen – prøv litt mer vekt i dag.';
+  if (meta.type === 'seconds') return ' Du nådde toppen – prøv en tyngre variant.';
+  return ' Du nådde toppen – prøv en tyngre variant eller flere reps.';
+}
+
+function readSetRow(row) {
+  return {
+    weight: parseFloat(row.querySelector('.set-weight')?.value) || 0,
+    reps: parseInt(row.querySelector('.set-reps')?.value || '0', 10) || 0,
+    seconds: parseInt(row.querySelector('.set-seconds')?.value || '0', 10) || 0,
+  };
+}
+
+// ---------- Drafts ----------
+
+function readDrafts() {
+  try {
+    return JSON.parse(localStorage.getItem(DRAFT_KEY)) || {};
+  } catch (_) {
+    return {};
+  }
+}
+
+function writeDrafts(drafts) {
+  try {
+    localStorage.setItem(DRAFT_KEY, JSON.stringify(drafts));
+  } catch (_) {
+    // storage unavailable (private mode etc.) – drafts are a convenience only
+  }
+}
+
+function getDraft(workoutKey) {
+  const draft = readDrafts()[workoutKey];
+  return draft && Date.now() - draft.savedAt < DRAFT_MAX_AGE_MS ? draft : null;
+}
+
+function latestDraft() {
+  return Object.values(readDrafts())
+    .filter(draft => Date.now() - draft.savedAt < DRAFT_MAX_AGE_MS)
+    .sort((a, b) => b.savedAt - a.savedAt)[0] || null;
+}
+
+function saveDraft() {
+  const workoutKey = els.workoutSelect.value;
+  if (!workouts[workoutKey]) return;
+  const exercises = {};
+  els.exerciseFormArea.querySelectorAll('.exercise-card').forEach(card => {
+    exercises[card.dataset.exercise] = [...card.querySelectorAll('.set-row')].map(readSetRow);
+  });
+  const drafts = readDrafts();
+  drafts[workoutKey] = {
+    workoutKey,
+    date: els.sessionDate.value,
+    notes: els.sessionNotes.value,
+    exercises,
+    savedAt: Date.now(),
+  };
+  writeDrafts(drafts);
+}
+
+function clearDraft(workoutKey) {
+  const drafts = readDrafts();
+  delete drafts[workoutKey];
+  writeDrafts(drafts);
+}
+
+// ---------- Guided routine ----------
+
+let guide = null;
+
+function startGuide() {
+  const workout = workouts[els.workoutSelect.value];
+  const steps = [];
+  workout.pairs.forEach(pair => pair.exercises.forEach(key => {
+    const meta = exerciseCatalog[key];
+    const rows = [...els.exerciseFormArea.querySelectorAll(`.exercise-card[data-exercise="${key}"] .set-row`)];
+    const count = Math.max(rows.length, 1);
+    for (let i = 0; i < count; i++) {
+      const planned = rows[i] ? readSetRow(rows[i]).seconds : 0;
+      steps.push({
+        key,
+        label: pair.label,
+        round: i + 1,
+        rounds: count,
+        seconds: meta.type === 'seconds' ? (planned || meta.defaultValue || 30) : 0,
+      });
+    }
+  }));
+
+  guide = { steps, index: 0, remaining: 0, endAt: 0, timer: null, done: new Set(), wakeLock: null, audio: null };
+  try {
+    guide.audio = new (window.AudioContext || window.webkitAudioContext)();
+  } catch (_) {
+    // no sound
+  }
+  els.guide.classList.remove('hidden');
+  document.body.classList.add('no-scroll');
+  requestWakeLock();
+  showGuideStep();
+}
+
+function showGuideStep() {
+  stopGuideTimer();
+  const step = guide.steps[guide.index];
+  if (!step) {
+    finishGuide();
+    return;
+  }
+  const meta = exerciseCatalog[step.key];
+  els.guideProgress.textContent = `${guide.index + 1} av ${guide.steps.length}`;
+  els.guideStep.textContent = step.rounds > 1 ? `${step.label} · runde ${step.round} av ${step.rounds}` : step.label;
+  els.guideName.textContent = meta.name;
+  els.guideTarget.innerHTML = escapeHtml(meta.target) + (meta.video ? ` · ${videoLink(meta.video)}` : '');
+  guide.remaining = step.seconds;
+  if (step.seconds) {
+    els.guideTimer.textContent = formatClock(step.seconds);
+    els.guideMain.textContent = 'Start';
+  } else {
+    els.guideTimer.textContent = meta.defaultValue ? `${meta.defaultValue} reps` : '';
+    els.guideMain.textContent = 'Ferdig – neste →';
+  }
+  els.guideSkip.textContent = guide.index === guide.steps.length - 1 ? 'Hopp over og avslutt' : 'Hopp over';
+}
+
+function onGuideMain() {
+  const step = guide.steps[guide.index];
+  if (!step.seconds || guide.remaining <= 0) {
+    nextGuideStep(false);
+  } else if (guide.timer) {
+    stopGuideTimer();
+    els.guideMain.textContent = 'Fortsett';
+  } else {
+    guide.audio?.resume?.();
+    guide.endAt = Date.now() + guide.remaining * 1000;
+    els.guideMain.textContent = 'Pause';
+    guide.timer = setInterval(tickGuide, 250);
+  }
+}
+
+function tickGuide() {
+  guide.remaining = Math.max(0, Math.ceil((guide.endAt - Date.now()) / 1000));
+  els.guideTimer.textContent = formatClock(guide.remaining);
+  if (guide.remaining > 0) return;
+  stopGuideTimer();
+  signalDone();
+  els.guideMain.textContent = 'Neste →';
+  const index = guide.index;
+  setTimeout(() => {
+    if (guide && guide.index === index) nextGuideStep(false);
+  }, 1500);
+}
+
+function nextGuideStep(skipped) {
+  if (!guide) return;
+  if (!skipped) guide.done.add(guide.steps[guide.index].key);
+  guide.index += 1;
+  showGuideStep();
+}
+
+function stopGuideTimer() {
+  if (guide?.timer) {
+    clearInterval(guide.timer);
+    guide.timer = null;
+  }
+}
+
+function finishGuide() {
+  const done = guide.done;
+  // Exercises skipped entirely are left out of the log.
+  els.exerciseFormArea.querySelectorAll('.exercise-card').forEach(card => {
+    if (!done.has(card.dataset.exercise)) card.querySelectorAll('.set-row').forEach(row => row.remove());
+  });
+  closeGuide();
+  if (done.size) {
+    els.logForm.requestSubmit();
+  } else {
+    renderWorkoutForm();
+    showToast('Ingenting å lagre.');
+  }
+}
+
+function closeGuide() {
+  if (!guide) return;
+  stopGuideTimer();
+  guide.wakeLock?.release?.().catch(() => {});
+  guide.audio?.close?.().catch(() => {});
+  guide = null;
+  els.guide.classList.add('hidden');
+  document.body.classList.remove('no-scroll');
+}
+
+async function requestWakeLock() {
+  try {
+    if (guide && navigator.wakeLock) guide.wakeLock = await navigator.wakeLock.request('screen');
+  } catch (_) {
+    // the screen may sleep; the timer still uses wall-clock time
+  }
+}
+
+function signalDone() {
+  try {
+    navigator.vibrate?.([200, 100, 200]);
+  } catch (_) {
+    // ignore
+  }
+  const ctx = guide?.audio;
+  if (!ctx) return;
+  try {
+    [0, 0.25].forEach(offset => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.frequency.value = 880;
+      gain.gain.value = 0.15;
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(ctx.currentTime + offset);
+      osc.stop(ctx.currentTime + offset + 0.15);
+    });
+  } catch (_) {
+    // ignore
+  }
+}
+
+function formatClock(totalSeconds) {
+  const m = Math.floor(totalSeconds / 60);
+  const sec = totalSeconds % 60;
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+
+// Local calendar date as YYYY-MM-DD (toISOString would give the UTC date).
+function localIso(date = new Date()) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
 function showToast(message) {
   const existing = document.querySelector('.toast');
   if (existing) existing.remove();
@@ -776,7 +1163,7 @@ function getLastNWeeks(count) {
   for (let i = count - 1; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i * 7);
-    result.push({ key: weekKey(d.toISOString().slice(0, 10)), label: `U${weekNumber(d)}` });
+    result.push({ key: weekKey(localIso(d)), label: `U${weekNumber(d)}` });
   }
   return result;
 }
