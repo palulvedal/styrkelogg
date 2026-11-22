@@ -15,6 +15,13 @@ const EXERCISE_CATALOG = {
   goblet: { name: 'Goblet squat', type: 'weight_reps', defaultSets: 2, target: '2 sett × 8–12 reps' },
   legraise: { name: 'Hengende beinhev / crunch', type: 'reps', defaultSets: 2, target: '2 sett × 10–15 reps' },
   pallof: { name: 'Pallof press', type: 'reps', defaultSets: 2, target: '2 sett × 10–15 reps per side' },
+  // Evening mobility routine. category 'mobility' keeps these out of the strength stats,
+  // and defaultValue pre-fills the form so the routine can be logged with one tap.
+  catcow: { name: 'Katt–ku', type: 'reps', category: 'mobility', defaultSets: 1, defaultValue: 8, target: '8 rolige repetisjoner (ca. 45 sek)' },
+  hiplift9090: { name: '90/90 hip lift mot vegg', type: 'seconds', category: 'mobility', defaultSets: 2, defaultValue: 45, target: '2 runder × 4–5 lange utpust (ca. 45 sek)' },
+  deadbug: { name: 'Dead bug', type: 'reps', category: 'mobility', defaultSets: 1, defaultValue: 8, target: '8 per side, korsryggen i gulvet' },
+  hipflexor: { name: 'Halvknestående hoftebøyerstrekk', type: 'seconds', category: 'mobility', defaultSets: 2, defaultValue: 30, target: '30 sek per side, klem setet og tipp bekkenet bakover' },
+  deepsquat: { name: 'Dyp knebøy-hvile', type: 'seconds', category: 'mobility', defaultSets: 1, defaultValue: 45, target: '45 sek, hold deg gjerne i noe' },
 };
 const WORKOUTS = {
   workout1: {
@@ -35,6 +42,18 @@ const WORKOUTS = {
       { label: 'Supersett 2', exercises: ['facepull', 'pushups'] },
       { label: 'Supersett 3', exercises: ['curls', 'goblet'] },
       { label: 'Supersett 4', exercises: ['legraise', 'pallof'] },
+    ],
+  },
+  kveld: {
+    name: 'Kveldsrutine (5 min)',
+    subtitle: 'Hofter, bekken og pust – hver kveld',
+    mobility: true,
+    pairs: [
+      { label: 'Steg 1', exercises: ['catcow'] },
+      { label: 'Steg 2', exercises: ['hiplift9090'] },
+      { label: 'Steg 3', exercises: ['deadbug'] },
+      { label: 'Steg 4', exercises: ['hipflexor'] },
+      { label: 'Steg 5', exercises: ['deepsquat'] },
     ],
   },
 };
@@ -68,6 +87,8 @@ const els = {
   statSessions: document.getElementById('statSessions'),
   statMonth: document.getElementById('statMonth'),
   statVolume: document.getElementById('statVolume'),
+  statEvening: document.getElementById('statEvening'),
+  statEvening7: document.getElementById('statEvening7'),
   strengthExerciseSelect: document.getElementById('strengthExerciseSelect'),
   volumeExerciseSelect: document.getElementById('volumeExerciseSelect'),
   sessionsChart: document.getElementById('sessionsChart'),
@@ -82,6 +103,7 @@ async function init() {
   applyTheme();
   bindBaseEvents();
   populateWorkoutSelect();
+  selectWorkoutFromUrl();
   populateExerciseSelects();
   renderPlan();
   setToday();
@@ -205,6 +227,19 @@ function populateWorkoutSelect() {
     .join('');
 }
 
+// Lets a bookmark or reminder link straight to a workout, e.g. /?okt=kveld
+function selectWorkoutFromUrl() {
+  const key = new URLSearchParams(window.location.search).get('okt');
+  if (key && workouts[key]) {
+    els.workoutSelect.value = key;
+    activateTab('log');
+  }
+}
+
+function isMobilitySession(session) {
+  return Boolean(workouts[session.workoutKey]?.mobility);
+}
+
 function populateExerciseSelects() {
   const options = Object.entries(exerciseCatalog)
     .filter(([, meta]) => meta.type === 'weight_reps')
@@ -263,6 +298,9 @@ function createSetRow(exerciseKey, number) {
     seconds.classList.remove('hidden');
   } else if (meta.type === 'reps') {
     weight.classList.add('hidden');
+  }
+  if (meta.defaultValue) {
+    (meta.type === 'seconds' ? seconds : reps).value = meta.defaultValue;
   }
 
   row.querySelector('.remove-set-btn').addEventListener('click', () => {
@@ -395,7 +433,9 @@ function renderPlan() {
 }
 
 function renderDashboard() {
-  const sessions = [...appState.sessions].sort((a, b) => a.date.localeCompare(b.date));
+  const allSessions = [...appState.sessions].sort((a, b) => a.date.localeCompare(b.date));
+  renderEveningStreak(allSessions.filter(isMobilitySession));
+  const sessions = allSessions.filter(session => !isMobilitySession(session));
   els.statSessions.textContent = sessions.length;
   els.statMonth.textContent = sessions.filter(s => daysAgo(s.date) <= 30).length;
   els.statVolume.textContent = formatNumber(sessions.reduce((sum, session) => sum + session.exerciseLogs.reduce((acc, log) => acc + getExerciseVolume(log), 0), 0));
@@ -404,6 +444,23 @@ function renderDashboard() {
   renderStrengthChart(sessions, els.strengthExerciseSelect.value);
   renderVolumeChart(sessions, els.volumeExerciseSelect.value);
   renderPRTable(sessions);
+}
+
+// Counts consecutive days with an evening routine, ending today (or yesterday,
+// so the streak isn't shown as broken before tonight's routine is done).
+function renderEveningStreak(sessions) {
+  const dates = new Set(sessions.map(s => s.date));
+  const day = new Date();
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  if (!dates.has(iso(day))) day.setDate(day.getDate() - 1);
+  let streak = 0;
+  while (dates.has(iso(day))) {
+    streak += 1;
+    day.setDate(day.getDate() - 1);
+  }
+  const last7 = sessions.filter(s => daysAgo(s.date) < 7).length;
+  els.statEvening.textContent = `${streak}`;
+  els.statEvening7.textContent = `${last7}/7`;
 }
 
 function renderWeeklySessionsChart(sessions) {
@@ -446,7 +503,7 @@ function renderVolumeChart(sessions, exerciseKey) {
 }
 
 function renderPRTable(sessions) {
-  const keys = Object.keys(exerciseCatalog).filter(key => ['weight_reps', 'reps', 'seconds'].includes(exerciseCatalog[key].type));
+  const keys = Object.keys(exerciseCatalog).filter(key => exerciseCatalog[key].category !== 'mobility' && ['weight_reps', 'reps', 'seconds'].includes(exerciseCatalog[key].type));
   const rows = keys.map(key => {
     const meta = exerciseCatalog[key];
     let best = 0;
